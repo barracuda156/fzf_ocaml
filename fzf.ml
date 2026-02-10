@@ -146,7 +146,7 @@ let run user_input tty_text stdin =
 ;;
 
 let () =
-  Command.run @@
+  Command_unix.run @@
   let open Command.Let_syntax in
   Command.async ~summary:"fzf" [%map_open
     let () = return () in
