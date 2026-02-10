@@ -4,7 +4,8 @@ open Async
 type t = {
   mutable items: string list
 ; mutable filtered_items : string list
-; mutable selected : string option
+; mutable selected_index : int
+; mutable selection_list : string list
 ; spinner : Spinner.t
 ; mutable entered_text : string option
 }
@@ -13,13 +14,14 @@ let create () =
   {
     items = []
   ; filtered_items = []
-  ; selected = None
+  ; selected_index = 0
+  ; selection_list = []
   ; spinner = Spinner.create ~spin_every:(sec 0.2)
   ; entered_text = None
   }
 
 let filter_items_and_selection t entered_text =
-  let { items; filtered_items = _; selected =_; spinner = _; entered_text = _} = t in
+  let { items; filtered_items = _; selected_index = _; selection_list = _; spinner = _; entered_text = _} = t in
   t.entered_text <- entered_text;
   let filtered_items =
     match entered_text with
@@ -30,18 +32,24 @@ let filter_items_and_selection t entered_text =
       |> List.filter ~f:(fun item ->
           Option.is_some @@ String.Search_pattern.index ~in_:item pattern)
   in
-  let filtered_items, selected =
+  let selection_list, filtered_items =
     match filtered_items with
-    | selection :: filtered_items -> (filtered_items, Some selection)
-    | [] -> ([], None)
+    | first :: rest -> ([first], rest)
+    | [] -> ([], [])
   in
+  (* Reset selection index when filter changes *)
+  t.selected_index <- 0;
+  t.selection_list <- selection_list;
   t.filtered_items <- filtered_items;
-  t.selected <- selected;
+;;
+
+let get_selected t =
+  List.nth t.selection_list t.selected_index
 ;;
 
 let widget t screen =
   let open Tty_text in
-  let {items = _; filtered_items; selected; spinner; entered_text } = t in
+  let {items = _; filtered_items; selected_index = _; selection_list = _; spinner; entered_text } = t in
   let prompt_size = 1 in
   let item_count = screen.Screen_dimensions.height - prompt_size in
   let all_but_selection =
@@ -54,7 +62,9 @@ let widget t screen =
         Widget.text text)
   in
   let selected =
-    Option.map ~f:Widget.text selected
+    match List.nth t.selection_list t.selected_index with
+    | Some sel -> Some (Widget.text sel)
+    | None -> None
   in
   let spinner = Option.map
       (Spinner.to_char spinner)
@@ -74,6 +84,37 @@ let widget t screen =
 
 let handle_input t input =
   match input with
+  | Tty_text.User_input.Arrow_down -> begin
+      let all_items = t.selection_list @ t.filtered_items in
+      let max_index = (List.length all_items) - 1 in
+      if t.selected_index < max_index then begin
+        t.selected_index <- t.selected_index + 1;
+        (* If we move past current selection_list, rotate items *)
+        if t.selected_index >= List.length t.selection_list then begin
+          match t.filtered_items with
+          | next :: rest ->
+            t.selection_list <- t.selection_list @ [next];
+            t.filtered_items <- rest
+          | [] -> ()
+        end
+      end;
+      `Continue t
+    end
+  | Tty_text.User_input.Arrow_up -> begin
+      if t.selected_index > 0 then begin
+        t.selected_index <- t.selected_index - 1;
+        (* If we move back and selection_list is too long, rotate back *)
+        if List.length t.selection_list > 1 &&
+           t.selected_index < List.length t.selection_list - 1 then begin
+          match List.rev t.selection_list with
+          | last :: rest ->
+            t.selection_list <- List.rev rest;
+            t.filtered_items <- last :: t.filtered_items
+          | [] -> ()
+        end
+      end;
+      `Continue t
+    end
   | Tty_text.User_input.Backspace -> begin
       match t.entered_text with
       | None -> `Continue t
@@ -94,7 +135,7 @@ let handle_input t input =
       filter_items_and_selection t (Some text);
       `Continue t
     end
-  | Return -> (`Finished t.selected)
+  | Return -> (`Finished (get_selected t))
   | Escape -> (`Finished None)
 ;;
 

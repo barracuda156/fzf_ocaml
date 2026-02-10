@@ -4,6 +4,8 @@ open Async
 module User_input = struct
   type t =
     | Ctrl_c
+    | Arrow_up
+    | Arrow_down
     | Escape
     | Backspace
     | Return (* Enter key *)
@@ -169,11 +171,11 @@ let with_rendering f =
     let%bind () = do_action tty_writer Clear_screen in
     let user_input =
       Pipe.create_reader ~close_on_exception:true (fun w ->
+        let b = Bytes.create 3 in
         let repeat x =
           let%bind () = Pipe.write w x in
           return (`Repeat ())
         in
-        let b = Bytes.create 1 in
         Deferred.repeat_until_finished () (fun () ->
           match%bind Reader.really_read ~len:1 tty_reader b with
           | `Eof _ -> return (`Finished ())
@@ -182,9 +184,31 @@ let with_rendering f =
             | 3 (* CTRL + C *) ->
               let%bind () = Pipe.write w User_input.Ctrl_c in
               return (`Finished ())
+            | 0O33  -> (* ESC - check if it's an arrow key *)
+              (* Try to read the next two bytes for arrow key sequences *)
+              let%bind read_result =
+                Clock.with_timeout (Time_float.Span.of_ms 50.0)
+                  (Reader.really_read ~len:2 tty_reader b ~pos:1)
+              in
+              (match read_result with
+              | `Result (`Ok) ->
+                (* Check for arrow key escape sequences: ESC[A, ESC[B, ESC[C, ESC[D *)
+                (match (Bytes.get b 1, Bytes.get b 2) with
+                | ('[', 'A') -> repeat Arrow_up
+                | ('[', 'B') -> repeat Arrow_down
+                | ('[', 'C') -> return (`Repeat ())  (* Right arrow - ignore *)
+                | ('[', 'D') -> return (`Repeat ())  (* Left arrow - ignore *)
+                | _ -> repeat Escape  (* Some other escape sequence *)
+                )
+              | `Result (`Eof _) ->
+                (* Timeout or EOF - treat as plain Escape *)
+                repeat Escape
+              | `Timeout ->
+                (* Just ESC key pressed alone *)
+                repeat Escape
+              )
             | 0O177 -> repeat Backspace
             | 0O015 -> repeat Return
-            | 0O33  -> repeat Escape
             | _     -> repeat (Char (Bytes.get b 0))
         )
       )

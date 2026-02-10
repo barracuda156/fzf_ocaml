@@ -28,6 +28,8 @@ end
 module User_input : sig
   type t =
     | Ctrl_c
+    | Arrow_up
+    | Arrow_down
     | Escape
     | Backspace
     | Return (* Enter key *)
