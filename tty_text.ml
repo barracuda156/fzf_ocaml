@@ -43,9 +43,8 @@ module Configure_terminal = struct
     let%bind () = setattr_out output ~attr_out:t.attr_out in
     return ()
 
-  let map_termio (attrs : Core.Unix.Terminal_io.t) =
+  let map_termio (attrs : Core_unix.Terminal_io.t) =
     { attrs with
-      Core.Unix.Terminal_io.
       c_ignbrk = false;
       c_brkint = false;
       c_parmrk = false;
@@ -144,9 +143,8 @@ let with_rendering f =
       Process.run_exn ()
         ~prog:"stty"
         (* NOTE: for people on Mac OS X, use ~args:[ "-f"; "/dev/tty"; "size" ] *)
-        ~args:[ "size"
-              ; "-F"
-              ; "/dev/tty"
+        ~args:[ "-f"
+              ; "/dev/tty"; "size"
               ]
     in
     match

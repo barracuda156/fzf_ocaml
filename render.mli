@@ -14,7 +14,7 @@ open! Async
     occur on the event of a new line being read.
 *)
 val every
-  :  how_often_to_render:Time.Span.t
+  :  how_often_to_render:Time_float.Span.t
   -> render:(unit -> unit Deferred.t)
   -> (unit -> [ `Finished of 'a | `Repeat of unit ] Deferred.t)
   -> 'a Deferred.t
