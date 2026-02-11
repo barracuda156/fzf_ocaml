@@ -1,6 +1,8 @@
 open Core
 open Async
 
+let version = "0.0.1"
+
 type t = {
   mutable items: string list
 ; mutable filtered_items : string list
@@ -195,6 +197,7 @@ let () =
   (* Preprocess argv to handle --flag=value *)
   let transformed_argv = preprocess_argv () in
   Command_unix.run
+    ~version
     ~argv:(Array.to_list transformed_argv)
   @@
   let open Command.Let_syntax in
